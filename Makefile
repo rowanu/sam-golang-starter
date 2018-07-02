@@ -1,5 +1,8 @@
-OUTPUT = main
-ZIPFILE = lambda.zip
+OUTPUT = main # Referenced as Handler in template.yaml
+PACKAGED_TEMPLATE = packaged.yaml
+S3_BUCKET := $(S3_BUCKET)
+STACK_NAME := $(STACK_NAME)
+TEMPLATE = template.yaml
 
 .PHONY: test
 test:
@@ -7,11 +10,11 @@ test:
 
 .PHONY: clean
 clean:
-	rm -f $(OUTPUT) $(ZIPFILE)
+	rm -f $(OUTPUT) $(PACKAGED_TEMPLATE)
 
 .PHONY: install
 install:
-	go get -t ./...
+	go get ./...
 
 main: ./function/main.go
 	go build -o $(OUTPUT) ./function/main.go
@@ -21,13 +24,17 @@ main: ./function/main.go
 lambda:
 	GOOS=linux GOARCH=amd64 $(MAKE) main
 
-# create a lambda deployment package
-zip: clean lambda
-	zip -9 -r $(ZIPFILE) $(OUTPUT)
-
-.PHONY: run-local
-local: zip
-	sam local start-api &
-
 .PHONY: build
 build: clean lambda
+
+.PHONY: api
+api: build
+	sam local start-api
+
+.PHONY: package
+package: build
+	sam package --template-file $(TEMPLATE) --s3-bucket $(S3_BUCKET) --output-template-file $(PACKAGED_TEMPLATE)
+
+.PHONY: deploy
+deploy: package
+	sam deploy --stack-name $(STACK_NAME) --template-file $(PACKAGED_TEMPLATE) --capabilities CAPABILITY_IAM
